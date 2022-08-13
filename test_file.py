@@ -74,8 +74,10 @@ nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 
+max_jobs = 40
+
 #Loading Dataset
-df = pd.read_csv('/content/drive/MyDrive/Kaggle_comps/train.csv') #### path to train file
+df = pd.read_csv('train.csv') #### path to train file
 
 d_type = df['discourse_type'].to_list()
 
@@ -99,8 +101,8 @@ def data_preprocess(f):
   X = df['discourse_text'].values
   return X
 
-X_train = data_preprocess('/content/drive/MyDrive/Kaggle_comps/train.csv')
-X_test = data_preprocess('/content/drive/MyDrive/Kaggle_comps/test.csv')
+X_train = data_preprocess('train.csv')
+X_test = data_preprocess('test.csv')
 
 
 n = pd.DataFrame(X_train)
@@ -112,8 +114,8 @@ le = preprocessing.LabelEncoder()
 le.fit(list(set(d_type)))
 df['type'] = le.transform(df['discourse_type'])
 
-df_train = pd.read_csv('/content/drive/MyDrive/Kaggle_comps/train.csv')
-df_test = pd.read_csv('/content/drive/MyDrive/Kaggle_comps/test.csv')
+df_train = pd.read_csv('train.csv')
+df_test = pd.read_csv('test.csv')
 
 X_type_train = pd.get_dummies(df_train, columns=["discourse_type"])
 X_type_test = pd.get_dummies(df_test, columns=["discourse_type"])
@@ -157,19 +159,19 @@ y = df['y_trans'].values
 
 X = X_mod.tocsr()[:L]
 
-def log_loss_score(X_set,y_set):
+def log_loss_score(model, X_set,y_set):
     onehot_encoder = OneHotEncoder(sparse=False)
     y_enc = onehot_encoder.fit_transform(np.array(y_set).reshape(-1,1))
-    y_fit = model_xgboost.predict_proba(X_set)
+    y_fit = model.predict_proba(X_set)
     return log_loss(y_enc,y_fit)
 
 
 ########################## XGBoost#############################
-model_xgboost = XGBClassifier(seed=42,n_estimators = 100,eval_metric = 'logloss')
+model_xgboost = XGBClassifier(seed=42,n_estimators = 100,eval_metric = 'logloss', use_label_encoder=False)
 
 kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
-score = cross_val_score(model_xgboost, X, y, cv =kfold, scoring=log_loss_score)
+score = cross_val_score(model_xgboost, X, y, cv =kfold, scoring='neg_log_loss', verbose=3)
 
 print("The mean validaiton score on 10 fold CV is : {:.4f}\nThe standard deviation of the spread is : {:.4f} "
       .format(score.mean(),score.std()))
@@ -188,7 +190,7 @@ print("The mean validaiton score on 10 fold CV is : {:.4f}\nThe standard deviati
 
 """
 
-classifier = XGBClassifier(eval_metric = 'logloss',seed=42)
+classifier = XGBClassifier(eval_metric = 'logloss',seed=42,use_label_encoder=False)
 
 params2 = {
     "learning_rate" : [0.1, 0.25, 0.5, 0.7, 0.8, 1],
@@ -202,7 +204,7 @@ params2 = {
 
 }
 
-grid_search = GridSearchCV(estimator = classifier, param_grid = params2, scoring =log_loss_score, n_jobs =-1, cv=10, verbose =3)
+grid_search = GridSearchCV(estimator = classifier, param_grid = params2, scoring ='neg_log_loss', n_jobs =max_jobs, cv=10, verbose =2)
 
 grid_search = grid_search.fit(X,y)
 
@@ -211,12 +213,12 @@ grid_params = grid_search.best_params_
 print('Best GridSearchCV params: ', grid_params)
 
 #Fitting the model with the best params we got
-classifier = XGBClassifier(**grid_params, eval_metric = 'logloss', seed=42)
+classifier = XGBClassifier(**grid_params, eval_metric = 'logloss', seed=42,use_label_encoder=False)
 
 #Using Stratified Kfold validation for accuracy
 # skf = StratifiedKFold(n_splits=10)
 
-score_g = cross_val_score(classifier, X, y, cv =kfold, scoring=log_loss_score)
+score_g = cross_val_score(classifier, X, y, cv =kfold, scoring='neg_log_loss', verbose=3)
 
 print("The mean validaiton score on 10 fold CV using GridSearchCV : {:.4f}\nThe standard deviation of the spread is : {:.4f} "
       .format(score_g.mean(),score_g.std()))
@@ -284,8 +286,8 @@ space = {
 # skfold = StratifiedKFold(n_splits=5,seed=42)
 # Objective function
 def objective(params):
-    xgboost = XGBClassifier(seed=42, **params, eval_metric = 'logloss')
-    scores = cross_val_score(xgboost, X, y, cv=kfold, scoring=log_loss_score, n_jobs=-1)
+    xgboost = XGBClassifier(seed=42, **params, eval_metric = 'logloss',use_label_encoder=False)
+    scores = cross_val_score(xgboost, X, y, cv=kfold, scoring='neg_log_loss', n_jobs=max_jobs)
     # Extract the best score
     best_score = max(scores)
     # Loss must be minimized
@@ -303,11 +305,11 @@ best_params = space_eval(space, best)
 print('Best Bayesian params: ', space_eval(space, best))
 
 #Fitting the model with the best params we got
-classifier = xgboost.XGBClassifier(**best_params,eval_metric = 'logloss',seed=42)
+classifier = xgboost.XGBClassifier(**best_params,eval_metric = 'logloss',seed=42,use_label_encoder=False)
 
 #Using Stratified Kfold validation for accuracy
 # skf = StratifiedKFold(n_splits=10)
-score_b = cross_val_score(classifier, X_train, y, cv =kfold, scoring = log_loss_score)
+score_b = cross_val_score(classifier, X_train, y, cv =kfold, scoring = 'neg_log_loss', verbose=2)
 
 print("The mean validaiton score on 10 fold CV using GridSearchCV : {:.4f} \nThe standard deviation of the spread is : {:.4f}"
       .format(score_b.mean(),score_b.std()))
